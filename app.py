@@ -18,7 +18,7 @@ def get_db():
     return conn
 
 # ── PORTADA ────────────────────────────────────────────────────────────────────
-with open(__file__.replace('app.py', 'portada.html'), 'r', encoding='utf-8') as _f:
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'portada.html'), 'r', encoding='utf-8') as _f:
     PORTADA_HTML = _f.read()
 
 # ── HTML Principal ─────────────────────────────────────────────────────────────
@@ -360,6 +360,8 @@ HTML = '''<!DOCTYPE html>
   <div class="nav-tab" onclick="switchView('activos')">Activos</div>
   <div class="nav-tab" onclick="switchView('repuestos')">Repuestos</div>
   <div class="nav-tab" onclick="switchView('locales')">Locales</div>
+  <div class="nav-tab" onclick="switchView('proformas')" style="color:var(--accent3)">&#9650; Proformas</div>
+  <div class="nav-tab" onclick="switchView('carga')" style="margin-left:auto;color:var(--accent2)">&#8679; Carga de datos</div>
 </div>
 
 <div class="filters">
@@ -556,6 +558,158 @@ HTML = '''<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- CARGA DE DATOS -->
+  <div class="view" id="view-carga">
+    <div class="kpi-row">
+      <div class="kpi" style="--kpi-color:var(--accent2)">
+        <div class="kpi-label">Módulo de carga</div>
+        <div class="kpi-value" style="font-size:18px">Excel → Base</div>
+        <div class="kpi-sub">Subí el Excel con los datos y se cargan automáticamente</div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:16px">
+      <!-- Panel subida -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Subir archivo Excel</span>
+        </div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:16px">
+          <div style="font-size:12px;color:var(--text2);line-height:1.6">
+            Usá la plantilla oficial con las hojas:<br>
+            <strong style="color:var(--text)">1. Activos · 2. Intervenciones · 3. Proveedores · 4. Técnicos · 5. Locales</strong><br>
+            Podés subir solo las hojas que tengas completadas.
+          </div>
+          <div id="drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:32px;text-align:center;cursor:pointer;transition:all 0.2s"
+               onclick="document.getElementById('file-input').click()"
+               ondragover="event.preventDefault();this.style.borderColor='var(--accent)'"
+               ondragleave="this.style.borderColor='var(--border)'"
+               ondrop="handleDrop(event)">
+            <div style="font-size:28px;margin-bottom:8px">📂</div>
+            <div style="font-size:13px;color:var(--text2)">Hacer clic o arrastrar el archivo Excel aquí</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:4px;font-family:var(--mono)">.xlsx únicamente</div>
+          </div>
+          <input type="file" id="file-input" accept=".xlsx" style="display:none" onchange="handleFile(this.files[0])">
+          <div id="file-name" style="font-family:var(--mono);font-size:11px;color:var(--accent);display:none"></div>
+          <button id="btn-cargar" onclick="subirArchivo()" disabled
+            style="background:var(--accent);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:13px;font-family:var(--mono);font-weight:600;cursor:pointer;opacity:0.4;transition:opacity 0.2s">
+            ↑ Cargar en la base
+          </button>
+        </div>
+      </div>
+
+      <!-- Estado de carga -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Resultado de la carga</span>
+        </div>
+        <div class="card-body">
+          <div id="carga-resultado" style="font-family:var(--mono);font-size:12px;color:var(--text2);min-height:200px">
+            Esperando archivo...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Resumen de la base actual -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Estado actual de la base</span>
+        <button onclick="limpiarBase()" style="background:rgba(247,79,79,0.15);border:1px solid rgba(247,79,79,0.4);color:var(--danger);padding:4px 12px;border-radius:4px;font-size:11px;font-family:var(--mono);cursor:pointer">
+          &#x1F5D1; Limpiar datos cargados
+        </button>
+      </div>
+      <div class="card-body">
+        <table class="tbl" id="tbl-estado-base">
+          <thead><tr>
+            <th>Tabla</th><th>Registros actuales</th><th>Última carga</th>
+          </tr></thead>
+          <tbody id="tbody-estado-base">
+            <tr><td colspan="3"><div class="loading">Cargando...</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- PROFORMAS -->
+  <div class="view" id="view-proformas">
+    <div class="kpi-row">
+      <div class="kpi" style="--kpi-color:var(--accent3)">
+        <div class="kpi-label">Modulo proformas</div>
+        <div class="kpi-value" style="font-size:18px">CSV/Excel</div>
+        <div class="kpi-sub">Subí el archivo y detectamos patrones</div>
+      </div>
+    </div>
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Subir archivo de proformas</span></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+          <div style="font-size:12px;color:var(--text2)">Subí el CSV o Excel exportado del sistema. La app detecta automaticamente proveedores, locales y riesgo financiero.</div>
+          <div id="pf-drop" style="border:2px dashed var(--border);border-radius:8px;padding:28px;text-align:center;cursor:pointer" onclick="document.getElementById('pf-fi').click()">
+            <div style="font-size:24px;margin-bottom:8px">&#128203;</div>
+            <div style="font-size:13px;color:var(--text2)">Clic o arrastrar archivo aqui</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:4px;font-family:var(--mono)">.csv o .xlsx</div>
+          </div>
+          <input type="file" id="pf-fi" accept=".csv,.xlsx" style="display:none" onchange="pfSelec(this.files[0])">
+          <div id="pf-fn" style="font-family:var(--mono);font-size:11px;color:var(--accent3);display:none"></div>
+          <button id="pf-btn" onclick="pfAnalizar()" disabled style="background:var(--accent3);color:#000;border:none;padding:10px 20px;border-radius:6px;font-size:13px;font-family:var(--mono);font-weight:600;cursor:pointer;opacity:0.4">
+            Analizar proformas
+          </button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Resumen</span></div>
+        <div class="card-body">
+          <div id="pf-res" style="font-family:var(--mono);font-size:12px;color:var(--text2);min-height:180px">Esperando archivo...</div>
+        </div>
+      </div>
+    </div>
+    <div id="pf-kpis" class="kpi-row" style="display:none"></div>
+    <div id="pf-tablas" style="display:none">
+      <div class="grid-2" style="margin-bottom:16px">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Sin factura por proveedor</span></div>
+          <div class="card-body">
+            <table class="tbl"><thead><tr><th>Proveedor</th><th>Sin factura</th><th>Total</th><th>% riesgo</th></tr></thead>
+            <tbody id="pf-t1"></tbody></table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Concentracion por proveedor</span></div>
+          <div class="card-body">
+            <table class="tbl"><thead><tr><th>Proveedor</th><th>N</th><th>Monto total</th><th>Ticket prom</th></tr></thead>
+            <tbody id="pf-t2"></tbody></table>
+          </div>
+        </div>
+      </div>
+      <div class="grid-2" style="margin-bottom:16px">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Gasto por local</span></div>
+          <div class="card-body">
+            <table class="tbl"><thead><tr><th>Local</th><th>N</th><th>Monto total</th><th>Ticket prom</th></tr></thead>
+            <tbody id="pf-t3"></tbody></table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Por responsable</span></div>
+          <div class="card-body">
+            <table class="tbl"><thead><tr><th>Responsable</th><th>N</th><th>Monto total</th><th>%</th></tr></thead>
+            <tbody id="pf-t4"></tbody></table>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><span class="card-title">Tipos de trabajo mas frecuentes</span></div>
+        <div class="card-body">
+          <table class="tbl"><thead><tr><th>Tipo</th><th>N</th><th>Monto total</th><th>Ticket prom</th></tr></thead>
+          <tbody id="pf-t5"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /main -->
 
 <script>
@@ -686,6 +840,8 @@ async function loadView(name) {
     case 'activos':    await loadActivos(); break;
     case 'repuestos':  await loadRepuestos(); break;
     case 'locales':    await loadLocales(); break;
+    case 'proformas':   break;
+    case 'carga':      await cargarEstadoBase(); break;
   }
 }
 
@@ -999,8 +1155,170 @@ async function loadLocales() {
   );
 }
 
-// ── INIT ──────────────────────────────────────────────────────────────────────
+// ── CARGA DE DATOS ───────────────────────────────────────────────────────────
+let archivoSeleccionado = null;
+
+function handleFile(file) {
+  if (!file) return;
+  archivoSeleccionado = file;
+  const nameEl = document.getElementById('file-name');
+  nameEl.textContent = '📄 ' + file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
+  nameEl.style.display = 'block';
+  const btn = document.getElementById('btn-cargar');
+  btn.disabled = false;
+  btn.style.opacity = '1';
+  document.getElementById('drop-zone').style.borderColor = 'var(--accent)';
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.endsWith('.xlsx')) handleFile(file);
+}
+
+async function subirArchivo() {
+  if (!archivoSeleccionado) return;
+  const btn = document.getElementById('btn-cargar');
+  const resultado = document.getElementById('carga-resultado');
+  btn.disabled = true;
+  btn.textContent = 'Procesando...';
+  resultado.innerHTML = '<span style="color:var(--accent2)">⏳ Procesando el archivo...</span>';
+
+  const formData = new FormData();
+  formData.append('archivo', archivoSeleccionado);
+
+  try {
+    const resp = await fetch('/api/cargar', { method: 'POST', body: formData });
+    const data = await resp.json();
+    
+    if (data.error) {
+      resultado.innerHTML = '<span style="color:var(--danger)">✗ Error: ' + data.error + '</span>';
+    } else {
+      let html = '<span style="color:var(--accent3)">✓ Carga completada</span><br><br>';
+      for (const [tabla, info] of Object.entries(data.resultado)) {
+        const color = info.insertados > 0 ? 'var(--accent3)' : 'var(--text2)';
+        html += '<span style="color:' + color + '">• ' + tabla + ': ' + info.insertados + ' registros nuevos';
+        if (info.errores > 0) {
+          html += ' <span style="color:var(--danger)">(' + info.errores + ' con errores)</span>';
+          if (info.detalles && info.detalles.length > 0) {
+            info.detalles.forEach(d => { html += '<br><span style="color:var(--danger);font-size:10px;padding-left:16px">&#8594; ' + d + '</span>'; });
+          }
+        }
+        html += '</span><br>';
+      }
+      resultado.innerHTML = html;
+      await cargarEstadoBase();
+      await loadAll();
+    }
+  } catch(e) {
+    resultado.innerHTML = '<span style="color:var(--danger)">✗ Error de conexión: ' + e.message + '</span>';
+  }
+  
+  btn.disabled = false;
+  btn.textContent = '↑ Cargar en la base';
+}
+
+async function limpiarBase() {
+  if (!confirm('¿Seguro? Esto elimina TODOS los datos cargados de intervenciones, activos, proveedores y técnicos. Los datos de demo ficticios se mantienen separados.')) return;
+  try {
+    const resp = await fetch('/api/limpiar-carga', { method: 'POST' });
+    const data = await resp.json();
+    if (data.ok) {
+      document.getElementById('carga-resultado').innerHTML = '<span style="color:var(--accent3)">✓ Datos limpiados correctamente</span>';
+      await cargarEstadoBase();
+      await loadAll();
+    }
+  } catch(e) {
+    alert('Error al limpiar: ' + e.message);
+  }
+}
+
+async function cargarEstadoBase() {
+  try {
+    const data = await api('estado-base');
+    document.getElementById('tbody-estado-base').innerHTML = data.map(r => `
+      <tr>
+        <td class="mono">${r.tabla}</td>
+        <td class="num">${fmt(r.registros)}</td>
+        <td style="color:var(--text2);font-size:11px">${r.ultima_carga || 'Sin datos'}</td>
+      </tr>
+    `).join('');
+  } catch(e) {}
+}
+
+
+// PROFORMAS
+var pfArchivo = null;
+function pfSelec(f) {
+  pfArchivo = f;
+  var el = document.getElementById('pf-fn');
+  el.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
+  el.style.display = 'block';
+  var btn = document.getElementById('pf-btn');
+  btn.disabled = false;
+  btn.style.opacity = '1';
+}
+async function pfAnalizar() {
+  if (!pfArchivo) return;
+  var btn = document.getElementById('pf-btn');
+  var res = document.getElementById('pf-res');
+  btn.textContent = 'Analizando...';
+  btn.disabled = true;
+  res.innerHTML = '<span style="color:var(--accent3)">Procesando...</span>';
+  var fd = new FormData();
+  fd.append('archivo', pfArchivo);
+  try {
+    var resp = await fetch('/api/analizar-proformas', {method:'POST', body:fd});
+    var d = await resp.json();
+    if (d.error) {
+      res.innerHTML = '<span style="color:var(--danger)">Error: ' + d.error + '</span>';
+    } else {
+      res.innerHTML = '<span style="color:var(--accent3)">Completado</span><br><br>' +
+        'Total: <strong>' + fmt(d.total) + '</strong><br>' +
+        'Monto: <strong style="color:var(--accent2)">' + fmtPeso(d.monto_total) + '</strong><br>' +
+        'Sin factura: <strong style="color:var(--danger)">' + fmt(d.sin_factura) + ' (' + fmtDec(d.sin_factura/d.total*100) + '%)</strong><br>' +
+        'Proveedores: <strong>' + d.n_proveedores + '</strong><br>' +
+        'Locales: <strong>' + d.n_locales + '</strong>';
+
+      var kpis = document.getElementById('pf-kpis');
+      kpis.style.display = 'grid';
+      kpis.innerHTML =
+        '<div class="kpi" style="--kpi-color:var(--accent)"><div class="kpi-label">Total proformas</div><div class="kpi-value">' + fmt(d.total) + '</div></div>' +
+        '<div class="kpi" style="--kpi-color:var(--accent2)"><div class="kpi-label">Monto total</div><div class="kpi-value" style="font-size:20px">' + fmtPeso(d.monto_total) + '</div></div>' +
+        '<div class="kpi" style="--kpi-color:var(--danger)"><div class="kpi-label">Sin factura</div><div class="kpi-value">' + fmt(d.sin_factura) + '</div><div class="kpi-sub">' + fmtDec(d.sin_factura/d.total*100) + '% del total</div></div>' +
+        '<div class="kpi" style="--kpi-color:var(--accent)"><div class="kpi-label">Proveedores</div><div class="kpi-value">' + d.n_proveedores + '</div></div>' +
+        '<div class="kpi" style="--kpi-color:var(--accent)"><div class="kpi-label">Locales</div><div class="kpi-value">' + d.n_locales + '</div></div>' +
+        '<div class="kpi" style="--kpi-color:var(--accent2)"><div class="kpi-label">Ticket promedio</div><div class="kpi-value" style="font-size:20px">' + fmtPeso(d.ticket_prom) + '</div></div>';
+
+      document.getElementById('pf-t1').innerHTML = d.sin_factura_list.map(function(r) {
+        return '<tr><td>' + r.p + '</td><td class="num" style="color:var(--danger)">' + r.sf + '</td><td class="num">' + r.t + '</td><td class="num" style="color:' + (r.pct>30?'var(--danger)':'var(--accent2)') + '">' + fmtDec(r.pct) + '%</td></tr>';
+      }).join('');
+      document.getElementById('pf-t2').innerHTML = d.proveedores.map(function(r) {
+        return '<tr><td><strong>' + r.p + '</strong></td><td class="num">' + r.n + '</td><td class="num">' + fmtPeso(r.m) + '</td><td class="num">' + fmtPeso(r.tp) + '</td></tr>';
+      }).join('');
+      document.getElementById('pf-t3').innerHTML = d.locales.map(function(r) {
+        return '<tr><td><strong>' + r.l + '</strong></td><td class="num">' + r.n + '</td><td class="num">' + fmtPeso(r.m) + '</td><td class="num">' + fmtPeso(r.tp) + '</td></tr>';
+      }).join('');
+      document.getElementById('pf-t4').innerHTML = d.ingenieros.map(function(r) {
+        return '<tr><td><strong>' + r.r + '</strong></td><td class="num">' + r.n + '</td><td class="num">' + fmtPeso(r.m) + '</td><td class="num">' + fmtDec(r.pct) + '%</td></tr>';
+      }).join('');
+      document.getElementById('pf-t5').innerHTML = d.trabajos.map(function(r) {
+        return '<tr><td>' + r.t + '</td><td class="num">' + r.n + '</td><td class="num">' + fmtPeso(r.m) + '</td><td class="num">' + fmtPeso(r.tp) + '</td></tr>';
+      }).join('');
+
+      document.getElementById('pf-tablas').style.display = 'block';
+    }
+  } catch(e) {
+    res.innerHTML = '<span style="color:var(--danger)">Error: ' + e.message + '</span>';
+  }
+  btn.textContent = 'Analizar proformas';
+  btn.disabled = false;
+}
+
+// INIT
 loadAll();
+
 </script>
 
 <!-- IA FLOTANTE -->
@@ -1500,6 +1818,350 @@ def api_locales():
     data = conn.execute(sql, params).fetchall()
     conn.close()
     return jsonify([dict(r) for r in data])
+
+@app.route('/api/estado-base')
+def api_estado_base():
+    conn = get_db()
+    tablas = ['activos', 'intervenciones', 'proveedores', 'tecnicos', 'locales', 
+              'ordenes_trabajo', 'costos_intervencion', 'repuestos', 'intervencion_repuestos']
+    resultado = []
+    for tabla in tablas:
+        try:
+            cur = conn.execute(f"SELECT COUNT(*) FROM {tabla}")
+            count = cur.fetchone()[0]
+            resultado.append({'tabla': tabla, 'registros': count, 'ultima_carga': None})
+        except:
+            resultado.append({'tabla': tabla, 'registros': 0, 'ultima_carga': None})
+    conn.close()
+    return jsonify(resultado)
+
+
+@app.route('/api/cargar', methods=['POST'])
+def api_cargar():
+    import openpyxl, tempfile, os
+    from datetime import datetime
+
+    if 'archivo' not in request.files:
+        return jsonify({'error': 'No se recibió ningún archivo'})
+    
+    archivo = request.files['archivo']
+    if not archivo.filename.endswith('.xlsx'):
+        return jsonify({'error': 'Solo se aceptan archivos .xlsx'})
+
+    # Guardar temporalmente
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+    archivo.save(tmp.name)
+    tmp.close()
+
+    resultado = {}
+
+    try:
+        wb = openpyxl.load_workbook(tmp.name, data_only=True)
+        conn = get_db()
+        conn.execute("PRAGMA foreign_keys = OFF")
+
+        # ── LOCALES ──────────────────────────────────────────────────────────
+        if '5. Locales' in wb.sheetnames:
+            ws = wb['5. Locales']
+            insertados = errores = 0
+            detalles_err = []
+            for row in ws.iter_rows(min_row=5, values_only=True):
+                if not row[0]: continue
+                try:
+                    nombre, ciudad, region, unidad, superficie, fecha_ap = (row[i] if i < len(row) else None for i in range(6))
+                    # Obtener o crear ciudad
+                    cur = conn.execute("SELECT id FROM ciudades WHERE nombre=?", (str(ciudad),))
+                    ciudad_row = cur.fetchone()
+                    if not ciudad_row:
+                        conn.execute("INSERT OR IGNORE INTO regiones(nombre) VALUES(?)", (str(region) if region else 'Sin región',))
+                        reg_id = conn.execute("SELECT id FROM regiones WHERE nombre=?", (str(region) if region else 'Sin región',)).fetchone()[0]
+                        conn.execute("INSERT INTO ciudades(nombre, region_id) VALUES(?,?)", (str(ciudad), reg_id))
+                        ciudad_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                    else:
+                        ciudad_id = ciudad_row[0]
+                    # Obtener o crear unidad de negocio
+                    cur = conn.execute("SELECT id FROM unidades_negocio WHERE nombre=?", (str(unidad),))
+                    un_row = cur.fetchone()
+                    if not un_row:
+                        conn.execute("INSERT INTO unidades_negocio(nombre) VALUES(?)", (str(unidad),))
+                        un_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                    else:
+                        un_id = un_row[0]
+                    conn.execute("""INSERT OR IGNORE INTO locales(nombre, ciudad_id, unidad_negocio_id, superficie_m2, fecha_apertura)
+                        VALUES(?,?,?,?,?)""", (str(nombre), ciudad_id, un_id, superficie, str(fecha_ap) if fecha_ap else None))
+                    insertados += 1
+                except Exception as e:
+                    errores += 1
+                    detalles_err.append(f'Fila {row[0]}: {str(e)}')
+            resultado['Locales'] = {'insertados': insertados, 'errores': errores, 'detalles': detalles_err[:5]}
+
+        # ── PROVEEDORES ───────────────────────────────────────────────────────
+        if '3. Proveedores' in wb.sheetnames:
+            ws = wb['3. Proveedores']
+            insertados = errores = 0
+            detalles_err = []
+            for row in ws.iter_rows(min_row=5, values_only=True):
+                if not row[0]: continue
+                try:
+                    nombre, contrato, ciudad, especialidad = (row[i] if i < len(row) else None for i in range(4))
+                    activo = row[7] if len(row) > 7 else 1
+                    cur = conn.execute("SELECT id FROM ciudades WHERE nombre=?", (str(ciudad) if ciudad else '',))
+                    c_row = cur.fetchone()
+                    ciudad_id = c_row[0] if c_row else None
+                    conn.execute("""INSERT OR IGNORE INTO proveedores(nombre, tipo_contrato, ciudad_id, especialidad, activo)
+                        VALUES(?,?,?,?,?)""", (str(nombre), str(contrato) if contrato else 'sin_contrato', ciudad_id, str(especialidad) if especialidad else None, int(activo) if activo else 1))
+                    insertados += 1
+                except Exception as e:
+                    errores += 1
+                    detalles_err.append(f'Error: {str(e)}')
+            resultado['Proveedores'] = {'insertados': insertados, 'errores': errores, 'detalles': detalles_err[:5]}
+
+        # ── TÉCNICOS ──────────────────────────────────────────────────────────
+        if '4. Técnicos' in wb.sheetnames:
+            ws = wb['4. Técnicos']
+            insertados = errores = 0
+            detalles_err = []
+            for row in ws.iter_rows(min_row=5, values_only=True):
+                if not row[0]: continue
+                try:
+                    nombre, nivel_nombre, costo_hora, ciudad, fecha_ing, activo = (row[i] if i < len(row) else None for i in range(6))
+                    cur = conn.execute("SELECT id FROM niveles_especializacion WHERE nombre=?", (str(nivel_nombre),))
+                    niv_row = cur.fetchone()
+                    if not niv_row:
+                        conn.execute("INSERT INTO niveles_especializacion(nombre, costo_hora) VALUES(?,?)", (str(nivel_nombre), float(costo_hora) if costo_hora else 0))
+                        niv_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                    else:
+                        niv_id = niv_row[0]
+                    cur = conn.execute("SELECT id FROM ciudades WHERE nombre=?", (str(ciudad) if ciudad else '',))
+                    c_row = cur.fetchone()
+                    ciudad_id = c_row[0] if c_row else None
+                    conn.execute("""INSERT OR IGNORE INTO tecnicos(nombre, nivel_id, ciudad_base_id, fecha_ingreso, activo)
+                        VALUES(?,?,?,?,?)""", (str(nombre), niv_id, ciudad_id, str(fecha_ing) if fecha_ing else None, int(activo) if activo else 1))
+                    insertados += 1
+                except Exception as e:
+                    errores += 1
+                    detalles_err.append(f'Error: {str(e)}')
+            resultado['Técnicos'] = {'insertados': insertados, 'errores': errores, 'detalles': detalles_err[:5]}
+
+        # ── ACTIVOS ───────────────────────────────────────────────────────────
+        if '1. Activos' in wb.sheetnames:
+            ws = wb['1. Activos']
+            insertados = errores = 0
+            detalles_err = []
+            for row in ws.iter_rows(min_row=5, values_only=True):
+                if not row[0]: continue
+                try:
+                    codigo, desc, familia_nombre, tipo_nombre, local_nombre, marca, modelo, serie, fecha_inst, vida_util, estado, criticidad, costo_reemplazo, ruta = (row[i] if i < len(row) else None for i in range(14))
+                    # Familia
+                    cur = conn.execute("SELECT id FROM familias WHERE nombre=?", (str(familia_nombre),))
+                    fam_row = cur.fetchone()
+                    if not fam_row:
+                        conn.execute("INSERT INTO familias(nombre) VALUES(?)", (str(familia_nombre),))
+                        fam_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                    else:
+                        fam_id = fam_row[0]
+                    # Tipo equipo
+                    cur = conn.execute("SELECT id FROM tipos_equipo WHERE nombre=?", (str(tipo_nombre),))
+                    te_row = cur.fetchone()
+                    if not te_row:
+                        conn.execute("INSERT INTO tipos_equipo(nombre, familia_id, frecuencia_preventivo_dias) VALUES(?,?,?)", (str(tipo_nombre), fam_id, 90))
+                        te_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                    else:
+                        te_id = te_row[0]
+                    # Local
+                    cur = conn.execute("SELECT id FROM locales WHERE nombre=?", (str(local_nombre),))
+                    loc_row = cur.fetchone()
+                    local_id = loc_row[0] if loc_row else None
+                    conn.execute("""INSERT OR IGNORE INTO activos(codigo, descripcion, tipo_equipo_id, local_id, marca, modelo, numero_serie, fecha_instalacion, vida_util_estimada_anos, estado, criticidad, costo_reemplazo_estimado, activo)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1)""",
+                        (str(codigo), str(desc), te_id, local_id, str(marca) if marca else None, str(modelo) if modelo else None,
+                         str(serie) if serie else None, str(fecha_inst) if fecha_inst else None,
+                         int(vida_util) if vida_util else None, str(estado) if estado else 'bueno',
+                         str(criticidad) if criticidad else 'media', float(costo_reemplazo) if costo_reemplazo else None))
+                    insertados += 1
+                except Exception as e:
+                    errores += 1
+                    detalles_err.append(f'Error: {str(e)}')
+            resultado['Activos'] = {'insertados': insertados, 'errores': errores, 'detalles': detalles_err[:5]}
+
+        # ── INTERVENCIONES ────────────────────────────────────────────────────
+        if '2. Intervenciones' in wb.sheetnames:
+            ws = wb['2. Intervenciones']
+            insertados = errores = 0
+            detalles_err = []
+            for row in ws.iter_rows(min_row=5, values_only=True):
+                if not row[0]: continue
+                try:
+                    codigo_activo, tipo_mant, fecha_sol, fecha_ini, fecha_fin, tipo_ejec, nombre_ejec, cat_falla, desc_trabajo, resultado_interv, es_reinc, seg_visita, dias_par, mano_obra, rep_total, total_costo, tipo_doc = (row[i] if i < len(row) else None for i in range(17))
+                    # Buscar activo
+                    cur = conn.execute("SELECT id FROM activos WHERE codigo=?", (str(codigo_activo),))
+                    act_row = cur.fetchone()
+                    if not act_row: errores += 1; continue
+                    activo_id = act_row[0]
+                    # Buscar técnico o proveedor
+                    tec_id = prov_id = None
+                    if tipo_ejec == 'interno':
+                        cur = conn.execute("SELECT id FROM tecnicos WHERE nombre=?", (str(nombre_ejec),))
+                        t = cur.fetchone()
+                        if t: tec_id = t[0]
+                    else:
+                        cur = conn.execute("SELECT id FROM proveedores WHERE nombre=?", (str(nombre_ejec),))
+                        p = cur.fetchone()
+                        if p: prov_id = p[0]
+                    # Crear orden de trabajo
+                    import time
+                    num_ot = f"OT-IMP-{int(time.time()*1000)}-{insertados+1}"
+                    conn.execute("""INSERT INTO ordenes_trabajo(numero, fecha_solicitud, activo_id, tipo_mantenimiento, estado)
+                        VALUES(?,?,?,?,?)""",
+                        (num_ot, str(fecha_sol), activo_id, str(tipo_mant) if tipo_mant else 'correctivo', 'cerrada'))
+                    ot_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                    # Crear intervención
+                    conn.execute("""INSERT INTO intervenciones(orden_trabajo_id, activo_id, tipo_ejecutor, tecnico_id, proveedor_id, fecha_inicio, fecha_fin, descripcion_trabajo, resultado, requirio_segunda_visita, es_reincidencia, dias_equipo_paralizado)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (ot_id, activo_id, str(tipo_ejec) if tipo_ejec else 'externo', tec_id, prov_id,
+                         str(fecha_ini) if fecha_ini else str(fecha_sol), str(fecha_fin) if fecha_fin else str(fecha_sol),
+                         str(desc_trabajo) if desc_trabajo else None, str(resultado_interv) if resultado_interv else 'resuelto',
+                         int(seg_visita) if seg_visita else 0, int(es_reinc) if es_reinc else 0,
+                         float(dias_par) if dias_par else 0))
+                    interv_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                    # Crear costo
+                    total = float(total_costo) if total_costo else (float(mano_obra or 0) + float(rep_total or 0))
+                    conn.execute("""INSERT INTO costos_intervencion(intervencion_id, mano_obra, repuestos_total, total, tipo_documento, tipo_compra)
+                        VALUES(?,?,?,?,?,?)""",
+                        (interv_id, float(mano_obra) if mano_obra else 0, float(rep_total) if rep_total else 0,
+                         total, str(tipo_doc) if tipo_doc else 'factura', 'presupuestada'))
+                    insertados += 1
+                except Exception as e:
+                    errores += 1
+                    detalles_err.append(f'Activo {str(row[0]) if row else "?"}: {str(e)}')
+            resultado['Intervenciones'] = {'insertados': insertados, 'errores': errores, 'detalles': detalles_err[:5]}
+
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.close()
+
+    except Exception as e:
+        return jsonify({'error': str(e)})
+    finally:
+        os.unlink(tmp.name)
+
+    return jsonify({'resultado': resultado})
+
+
+@app.route('/api/analizar-proformas', methods=['POST'])
+def api_analizar_proformas():
+    import tempfile, os
+    from collections import defaultdict
+    if 'archivo' not in request.files:
+        return jsonify({'error': 'No se recibio archivo'})
+    archivo = request.files['archivo']
+    fname = archivo.filename.lower()
+    ext = '.xlsx' if 'xlsx' in fname else '.csv'
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+    archivo.save(tmp.name)
+    tmp.close()
+    try:
+        rows = []
+        headers = []
+        if ext == '.csv':
+            with open(tmp.name, 'r', encoding='latin-1') as f2:
+                content = f2.read()
+            sep = ';' if content.count(';') > content.count(',') else ','
+            lines = [l for l in content.strip().split('\n') if l.strip()]
+            headers = [h.strip() for h in lines[0].split(sep)]
+            for line in lines[1:]:
+                parts = line.split(sep)
+                if len(parts) >= 3:
+                    rows.append({headers[i]: parts[i].strip() if i < len(parts) else '' for i in range(len(headers))})
+        else:
+            import openpyxl
+            wb = openpyxl.load_workbook(tmp.name, data_only=True)
+            ws = wb.active
+            hrow = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+            headers = [str(h).strip() if h else '' for h in hrow]
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if any(v for v in row):
+                    rows.append({headers[i]: str(row[i]).strip() if i < len(row) and row[i] is not None else '' for i in range(len(headers))})
+        def find_col(names):
+            for name in names:
+                for h in headers:
+                    if name.upper() in h.upper(): return h
+            return None
+        col_prov = find_col(['PROVEEDOR'])
+        col_local = find_col(['LOCAL','SUCURSAL'])
+        col_total = find_col(['TOTAL','MONTO'])
+        col_fact = find_col(['FACTURA','FACT'])
+        col_resp = find_col(['INGENIERO','RESPONSABLE','USUARIO'])
+        col_desc = find_col(['DESCRIPCION','DETALLE'])
+        def parse_m(val):
+            if not val: return 0
+            v = str(val).replace('$','').replace(' ','').strip()
+            if ',' in v and '.' in v: v = v.replace('.','').replace(',','.')
+            elif ',' in v: v = v.replace(',','.')
+            try: return float(v)
+            except: return 0
+        total = len(rows)
+        monto_total = 0
+        sin_factura = 0
+        prov_d = defaultdict(lambda:{'n':0,'m':0,'sf':0})
+        loc_d = defaultdict(lambda:{'n':0,'m':0})
+        resp_d = defaultdict(lambda:{'n':0,'m':0})
+        trab_d = defaultdict(lambda:{'n':0,'m':0})
+        KW = ['COMPRESOR','FILTRO','CONDENSADOR','EVAPORADOR','VARIADOR','TABLERO','BOMBA','MOTOR','INSTALACION','MANTENIMIENTO','REPARACION','LIMPIEZA','RECARGA']
+        for row in rows:
+            p = (row.get(col_prov,'') if col_prov else '').strip().upper() or 'SIN DATO'
+            l = (row.get(col_local,'') if col_local else '').strip().upper() or 'SIN DATO'
+            r2 = (row.get(col_resp,'') if col_resp else '').strip().upper() or 'SIN DATO'
+            desc = (row.get(col_desc,'') if col_desc else '').strip().upper()
+            fact = (row.get(col_fact,'') if col_fact else '').strip()
+            m = parse_m(row.get(col_total,'') if col_total else '')
+            monto_total += m
+            if not fact:
+                sin_factura += 1
+                prov_d[p]['sf'] += 1
+            prov_d[p]['n'] += 1; prov_d[p]['m'] += m
+            loc_d[l]['n'] += 1; loc_d[l]['m'] += m
+            resp_d[r2]['n'] += 1; resp_d[r2]['m'] += m
+            for kw in KW:
+                if kw in desc:
+                    trab_d[kw]['n'] += 1; trab_d[kw]['m'] += m; break
+        return jsonify({
+            'total': total,
+            'monto_total': round(monto_total,0),
+            'sin_factura': sin_factura,
+            'ticket_prom': round(monto_total/total,0) if total>0 else 0,
+            'n_proveedores': len(prov_d),
+            'n_locales': len(loc_d),
+            'proveedores': sorted([{'p':p,'n':d['n'],'m':round(d['m'],0),'tp':round(d['m']/d['n'],0) if d['n']>0 else 0} for p,d in prov_d.items()],key=lambda x:-x['m'])[:15],
+            'sin_factura_list': sorted([{'p':p,'sf':d['sf'],'t':d['n'],'pct':round(d['sf']/d['n']*100,1) if d['n']>0 else 0} for p,d in prov_d.items() if d['sf']>0],key=lambda x:-x['sf'])[:10],
+            'locales': sorted([{'l':l,'n':d['n'],'m':round(d['m'],0),'tp':round(d['m']/d['n'],0) if d['n']>0 else 0} for l,d in loc_d.items()],key=lambda x:-x['m'])[:15],
+            'ingenieros': sorted([{'r':r2,'n':d['n'],'m':round(d['m'],0),'pct':round(d['m']/monto_total*100,1) if monto_total>0 else 0} for r2,d in resp_d.items()],key=lambda x:-x['m']),
+            'trabajos': sorted([{'t':t,'n':d['n'],'m':round(d['m'],0),'tp':round(d['m']/d['n'],0) if d['n']>0 else 0} for t,d in trab_d.items() if d['n']>0],key=lambda x:-x['n'])
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)})
+    finally:
+        os.unlink(tmp.name)
+
+
+@app.route('/api/limpiar-carga', methods=['POST'])
+def api_limpiar_carga():
+    conn = get_db()
+    try:
+        # Eliminar solo los datos cargados manualmente (prefijo OT-IMP-)
+        conn.execute("DELETE FROM intervencion_repuestos WHERE intervencion_id IN (SELECT i.id FROM intervenciones i JOIN ordenes_trabajo o ON o.id=i.orden_trabajo_id WHERE o.numero LIKE 'OT-IMP-%')")
+        conn.execute("DELETE FROM costos_intervencion WHERE intervencion_id IN (SELECT i.id FROM intervenciones i JOIN ordenes_trabajo o ON o.id=i.orden_trabajo_id WHERE o.numero LIKE 'OT-IMP-%')")
+        conn.execute("DELETE FROM intervenciones WHERE orden_trabajo_id IN (SELECT id FROM ordenes_trabajo WHERE numero LIKE 'OT-IMP-%')")
+        conn.execute("DELETE FROM ordenes_trabajo WHERE numero LIKE 'OT-IMP-%'")
+        # Eliminar activos cargados manualmente (prefijo ACT-P o ACT-C)
+        conn.execute("DELETE FROM activos WHERE codigo LIKE 'ACT-P%' OR codigo LIKE 'ACT-C%'")
+        conn.commit()
+        conn.close()
+        return jsonify({'ok': True})
+    except Exception as e:
+        conn.close()
+        return jsonify({'ok': False, 'error': str(e)})
+
 
 @app.route('/api/ia', methods=['POST'])
 def api_ia():
